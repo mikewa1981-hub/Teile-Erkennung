@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- 2x4 Stein, Draufsicht -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M30,40h48v32h-48z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M36,32a5,5 0 1,0 10,0a5,5 0 1,0 -10,0z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M62,32a5,5 0 1,0 10,0a5,5 0 1,0 -10,0z" />
+</vector>

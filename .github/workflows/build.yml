@@ -5,6 +5,9 @@ on:
     branches: [main, master]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -23,7 +26,33 @@ jobs:
       - name: Debug-APK bauen
         run: gradle assembleDebug --no-daemon
 
+      - name: APK umbenennen
+        run: cp app/build/outputs/apk/debug/app-debug.apk Teile-Erkennung.apk
+
       - uses: actions/upload-artifact@v4
         with:
           name: Teile-Erkennung-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: Teile-Erkennung.apk
+
+      # Fester Download-Link: Releases -> "Neueste APK"
+      - name: Release aktualisieren
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest Teile-Erkennung.apk \
+            --title "Neueste APK" \
+            --notes "Automatisch gebaut aus ${GITHUB_SHA::7}. Teile-Erkennung.apk aufs Handy laden und installieren." \
+            --target "$GITHUB_SHA"
+
+      # APK zusätzlich auf dem Branch "apk" ablegen
+      - name: APK auf Branch apk ablegen
+        run: |
+          mkdir /tmp/apkbranch && cp Teile-Erkennung.apk /tmp/apkbranch/
+          cd /tmp/apkbranch
+          git init -q -b apk
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add Teile-Erkennung.apk
+          git commit -q -m "APK aus ${GITHUB_SHA::7}"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" apk

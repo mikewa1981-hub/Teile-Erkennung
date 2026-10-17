@@ -2,6 +2,8 @@ package de.mikewa.teileerkennung
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import kotlin.math.roundToInt
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -49,8 +51,8 @@ fun PartScreen(vm: AppViewModel) {
     LazyColumn(Modifier.fillMaxSize()) {
         item {
             Row(Modifier.fillMaxWidth().padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { vm.closePart() }) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Zurück")
+                IconButton(onClick = { vm.newScan() }) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Neues Foto")
                 }
                 Column(Modifier.weight(1f)) {
                     Text(
@@ -67,7 +69,46 @@ fun PartScreen(vm: AppViewModel) {
             }
         }
 
-        // Vergleichsbilder: dein Foto, Erkennungs-Referenz, Rebrickable-Bild
+        // Andere Treffer der Erkennung – antippen lädt deren Sets
+        if (vm.candidates.size > 1) {
+            item {
+                Text(
+                    "Andere Treffer",
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.padding(start = 16.dp, top = 4.dp),
+                )
+                LazyRow(
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    items(vm.candidates) { c ->
+                        val selected = c.id == candidate.id
+                        Column(
+                            Modifier
+                                .width(76.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(
+                                    if (selected) MaterialTheme.colorScheme.primaryContainer
+                                    else MaterialTheme.colorScheme.surfaceVariant,
+                                )
+                                .clickable(enabled = !selected) { vm.openCandidate(c) }
+                                .padding(4.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            ImageBox(c.imgUrl, Modifier.size(64.dp))
+                            Text(c.id, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                            Text(
+                                "${(c.score * 100).roundToInt()} %",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Vergleichsbilder: dein Foto, Erkennungs-Referenz, Datenbank-Bild
         item {
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
@@ -208,7 +249,13 @@ fun PartScreen(vm: AppViewModel) {
             }
         }
 
-        item { Spacer(Modifier.height(24.dp)) }
+        item {
+            androidx.compose.material3.OutlinedButton(
+                onClick = { vm.newScan() },
+                modifier = Modifier.fillMaxWidth().padding(12.dp),
+            ) { Text("Neues Foto aufnehmen") }
+            Spacer(Modifier.height(16.dp))
+        }
     }
 
     detail?.let { set ->

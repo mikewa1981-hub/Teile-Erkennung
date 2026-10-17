@@ -329,13 +329,6 @@ private fun ResultSection(vm: AppViewModel) {
                     }
                 }
             }
-            item {
-                Button(
-                    onClick = { shown?.let { vm.openCandidate(it) } },
-                    enabled = shown != null,
-                    modifier = Modifier.fillMaxWidth().padding(12.dp),
-                ) { Text("Sets mit diesem Teil suchen") }
-            }
         }
 
         item {

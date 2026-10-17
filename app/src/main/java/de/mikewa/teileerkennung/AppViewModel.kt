@@ -131,13 +131,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 val result = withContext(Dispatchers.IO) { Api.recognize(jpeg) }
                 candidates = result.take(8)
-                if (result.isEmpty()) scanError = "Kein Teil erkannt. Näher ran, besseres Licht, heller Hintergrund."
+                if (result.isEmpty()) {
+                    scanError = "Kein Teil erkannt. Näher ran, besseres Licht, heller Hintergrund."
+                } else {
+                    // Sets zum besten Treffer gleich laden
+                    openCandidate(result.first())
+                }
             } catch (e: Exception) {
                 scanError = friendly(e)
             } finally {
                 recognizing = false
             }
         }
+    }
+
+    /** Zurück zur Kamera: Teileansicht und Foto verwerfen. */
+    fun newScan() {
+        closePart()
+        clearScan()
     }
 
     fun clearScan() {

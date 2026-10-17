@@ -46,7 +46,7 @@ class MainActivity : ComponentActivity() {
 fun Root(vm: AppViewModel) {
     var tab by rememberSaveable { mutableStateOf(Tab.Scan) }
 
-    BackHandler(enabled = tab == Tab.Scan && vm.partOpen) { vm.closePart() }
+    BackHandler(enabled = tab == Tab.Scan && vm.partOpen) { vm.newScan() }
     BackHandler(enabled = tab == Tab.Scan && !vm.partOpen && vm.photo != null) { vm.clearScan() }
 
     Scaffold(

@@ -99,7 +99,7 @@ fun SetRow(set: LegoSet, onClick: () -> Unit, trailing: @Composable () -> Unit) 
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                "${set.setNum} · ${set.year} · ${set.numParts} Teile",
+                set.details(),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -123,10 +123,10 @@ fun SetDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 ImageBox(set.imgUrl, Modifier.fillMaxWidth().aspectRatio(1.3f))
-                Text("Set ${set.setNum} · ${set.year} · ${set.numParts} Teile")
+                Text("Set ${set.details()}")
                 set.url?.let { url ->
                     OutlinedButton(onClick = { uriHandler.openUri(url) }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Auf Rebrickable ansehen")
+                        Text(if (url.contains("bricklink")) "Auf BrickLink ansehen" else "Auf Rebrickable ansehen")
                     }
                 }
             }
@@ -139,6 +139,13 @@ fun SetDialog(
         dismissButton = { TextButton(onClick = onDismiss) { Text("Schließen") } },
     )
 }
+
+/** "6020-1 · 1984 · 330 Teile" – fehlende Angaben werden weggelassen. */
+fun LegoSet.details(): String = buildList {
+    add(setNum)
+    if (year > 0) add(year.toString())
+    if (numParts > 0) add("$numParts Teile")
+}.joinToString(" · ")
 
 @Composable
 fun CenteredMessage(text: String, modifier: Modifier = Modifier) {

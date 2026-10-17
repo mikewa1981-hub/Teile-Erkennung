@@ -17,6 +17,20 @@ class Store(context: Context) {
         get() = prefs.getString("username", "").orEmpty()
         set(v) = prefs.edit().putString("username", v.trim()).apply()
 
+    var brickLink: BrickLinkCredentials
+        get() = BrickLinkCredentials(
+            consumerKey = prefs.getString("bl_ck", "").orEmpty(),
+            consumerSecret = prefs.getString("bl_cs", "").orEmpty(),
+            tokenValue = prefs.getString("bl_tv", "").orEmpty(),
+            tokenSecret = prefs.getString("bl_ts", "").orEmpty(),
+        )
+        set(v) = prefs.edit()
+            .putString("bl_ck", v.consumerKey.trim())
+            .putString("bl_cs", v.consumerSecret.trim())
+            .putString("bl_tv", v.tokenValue.trim())
+            .putString("bl_ts", v.tokenSecret.trim())
+            .apply()
+
     var userToken: String
         get() = prefs.getString("user_token", "").orEmpty()
         set(v) = prefs.edit().putString("user_token", v).apply()

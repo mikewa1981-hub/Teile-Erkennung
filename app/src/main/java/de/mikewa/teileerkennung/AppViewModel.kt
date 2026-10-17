@@ -52,6 +52,33 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    var brickLink by mutableStateOf(store.brickLink); private set
+    var blMessage by mutableStateOf<String?>(null); private set
+    var blTestRunning by mutableStateOf(false); private set
+
+    fun updateBrickLink(creds: BrickLinkCredentials) {
+        store.brickLink = creds
+        brickLink = store.brickLink
+    }
+
+    fun testBrickLink() {
+        if (!brickLink.complete) {
+            blMessage = "Bitte alle vier BrickLink-Felder ausfüllen."
+            return
+        }
+        blTestRunning = true
+        blMessage = null
+        viewModelScope.launch {
+            blMessage = try {
+                withContext(Dispatchers.IO) { BrickLink.test(brickLink) }
+            } catch (e: Exception) {
+                friendly(e)
+            } finally {
+                blTestRunning = false
+            }
+        }
+    }
+
     fun login(user: String, password: String) {
         if (apiKey.isBlank()) {
             settingsMessage = "Bitte zuerst den API-Key speichern."
@@ -140,6 +167,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var setsLoading by mutableStateOf(false); private set
     var setsProgress by mutableStateOf<String?>(null); private set
 
+    /** Welche Quelle die aktuelle Set-Liste geliefert hat ("BrickLink" oder "Rebrickable"). */
+    var setsSource by mutableStateOf<String?>(null); private set
+    var sourceNote by mutableStateOf<String?>(null); private set
+
+    /** Bei BrickLink kommen alle Farben mit einem Aufruf – hier zwischengespeichert. */
+    private var blSets: Map<Int, List<LegoSet>>? = null
+
     val partOpen: Boolean get() = selectedCandidate != null
 
     private var partJob: Job? = null
@@ -155,8 +189,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         partError = null
         selectedColor = null
         setsProgress = null
-        if (apiKey.isBlank()) {
-            partError = "Bitte zuerst in den Einstellungen den Rebrickable-API-Key eintragen."
+        setsSource = null
+        sourceNote = null
+        blSets = null
+        val bl = brickLink
+        if (!bl.complete && apiKey.isBlank()) {
+            partError = "Bitte zuerst in den Einstellungen die BrickLink-Schlüssel oder den Rebrickable-API-Key eintragen."
             return
         }
         partJob?.cancel()
@@ -164,6 +202,22 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         partLoading = true
         val gen = ++partGen
         partJob = viewModelScope.launch {
+            if (bl.complete) {
+                try {
+                    openWithBrickLink(c, bl)
+                    if (gen == partGen) partLoading = false
+                    return@launch
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    if (apiKey.isBlank()) {
+                        partError = friendly(e)
+                        if (gen == partGen) partLoading = false
+                        return@launch
+                    }
+                    sourceNote = "BrickLink nicht erreichbar (${friendly(e)}) – nutze Rebrickable."
+                }
+            }
             try {
                 val info = withContext(Dispatchers.IO) { Api.resolvePart(c.id, apiKey) }
                 if (info == null) {
@@ -172,6 +226,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     return@launch
                 }
                 part = info
+                setsSource = "Rebrickable"
                 val cols = withContext(Dispatchers.IO) { Api.partColors(info.partNum, apiKey) }
                 colors = cols
                 if (cols.isEmpty()) {
@@ -189,6 +244,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private suspend fun openWithBrickLink(c: PartCandidate, bl: BrickLinkCredentials) {
+        val info = withContext(Dispatchers.IO) { BrickLink.part(c.id, bl) }
+            ?: throw ApiException("Teil ${c.id} ist bei BrickLink nicht bekannt.", 404)
+        val byColor = withContext(Dispatchers.IO) { BrickLink.setsByColor(info.partNum, bl) }
+        part = info
+        setsSource = "BrickLink"
+        colors = byColor.keys.toList()
+        blSets = byColor.entries.associate { it.key.colorId to it.value }
+        if (byColor.isEmpty()) {
+            partError = "Für dieses Teil sind bei BrickLink keine Sets bekannt."
+        } else {
+            loadSets(null)
+        }
+    }
+
     fun closePart() {
         partGen++
         setsGen++
@@ -202,12 +272,28 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         partLoading = false
         setsLoading = false
         setsProgress = null
+        setsSource = null
+        sourceNote = null
+        blSets = null
     }
 
     /** [colorId] = null lädt die Sets aller Farben nacheinander (wegen des Rebrickable-Limits etwas langsamer). */
     fun loadSets(colorId: Int?) {
         val p = part ?: return
         selectedColor = colorId
+        blSets?.let { cache ->
+            setsJob?.cancel()
+            setsGen++
+            partError = null
+            setsLoading = false
+            setsProgress = null
+            sets = if (colorId == null) {
+                cache.values.flatten().distinctBy { it.setNum }.sortedBy { it.setNum }
+            } else {
+                cache[colorId].orEmpty().sortedBy { it.setNum }
+            }
+            return
+        }
         setsJob?.cancel()
         sets = emptyList()
         partError = null

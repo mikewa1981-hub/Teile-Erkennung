@@ -86,7 +86,7 @@ fun PartScreen(vm: AppViewModel) {
                 CompareTile("Erkennung", Modifier.weight(1f)) {
                     ImageBox(candidate.imgUrl, Modifier.fillMaxSize())
                 }
-                CompareTile("Rebrickable", Modifier.weight(1f)) {
+                CompareTile(vm.setsSource ?: "Datenbank", Modifier.weight(1f)) {
                     ImageBox(vm.part?.imgUrl, Modifier.fillMaxSize())
                 }
             }
@@ -103,6 +103,17 @@ fun PartScreen(vm: AppViewModel) {
                     Spacer(Modifier.width(12.dp))
                     Text("Teil wird nachgeschlagen …")
                 }
+            }
+        }
+
+        vm.sourceNote?.let { note ->
+            item {
+                Text(
+                    note,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                )
             }
         }
 
@@ -171,7 +182,7 @@ fun PartScreen(vm: AppViewModel) {
         if (vm.sets.isNotEmpty()) {
             item {
                 Text(
-                    "${vm.sets.size} Sets mit diesem Teil",
+                    "${vm.sets.size} Sets mit diesem Teil" + (vm.setsSource?.let { " (Quelle: $it)" } ?: ""),
                     style = MaterialTheme.typography.titleSmall,
                     modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
                 )

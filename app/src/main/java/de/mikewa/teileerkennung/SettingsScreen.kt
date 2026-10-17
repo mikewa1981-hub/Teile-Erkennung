@@ -38,9 +38,27 @@ fun SettingsScreen(vm: AppViewModel) {
     ) {
         Text("Einstellungen", style = MaterialTheme.typography.titleLarge)
 
-        Text("1. Rebrickable-API-Key", style = MaterialTheme.typography.titleSmall)
+        Text("1. BrickLink-API (Set-Suche, empfohlen)", style = MaterialTheme.typography.titleSmall)
         Text(
-            "Für die Set-Suche nötig. Kostenlos nach der Anmeldung auf rebrickable.com unter " +
+            "Die Erkennung liefert BrickLink-Teilenummern, darum findet BrickLink die Sets am zuverlässigsten. " +
+                "Die vier Werte stehen auf bricklink.com unter My BrickLink → API. " +
+                "Beim Access Token als IP-Adresse und Maske 0.0.0.0 eintragen, sonst klappt es vom Handy nicht.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        BrickLinkFields(vm)
+        Button(
+            onClick = { vm.testBrickLink() },
+            enabled = !vm.blTestRunning,
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text(if (vm.blTestRunning) "Teste …" else "BrickLink testen") }
+        vm.blMessage?.let {
+            Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+        }
+
+        Spacer(Modifier.height(12.dp))
+        Text("2. Rebrickable-API-Key (Sammlung, Ersatz für Set-Suche)", style = MaterialTheme.typography.titleSmall)
+        Text(
+            "Für den Abgleich der Sammlung mit dem PC nötig. Kostenlos nach der Anmeldung auf rebrickable.com unter " +
                 "Einstellungen → API zu finden.",
             style = MaterialTheme.typography.bodySmall,
         )
@@ -67,7 +85,7 @@ fun SettingsScreen(vm: AppViewModel) {
         ) { Text("Rebrickable-API-Seite öffnen") }
 
         Spacer(Modifier.height(12.dp))
-        Text("2. Abgleich mit dem PC", style = MaterialTheme.typography.titleSmall)
+        Text("3. Abgleich mit dem PC", style = MaterialTheme.typography.titleSmall)
         Text(
             "Die Sammlung wird mit deinem Rebrickable-Konto abgeglichen. Am PC verwaltest du sie " +
                 "auf rebrickable.com. Das Passwort wird nur für die einmalige Anmeldung benutzt und nicht gespeichert.",
@@ -117,4 +135,31 @@ fun SettingsScreen(vm: AppViewModel) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
+}
+
+@Composable
+private fun BrickLinkFields(vm: AppViewModel) {
+    var ck by remember { mutableStateOf(vm.brickLink.consumerKey) }
+    var cs by remember { mutableStateOf(vm.brickLink.consumerSecret) }
+    var tv by remember { mutableStateOf(vm.brickLink.tokenValue) }
+    var ts by remember { mutableStateOf(vm.brickLink.tokenSecret) }
+
+    fun save() = vm.updateBrickLink(BrickLinkCredentials(ck, cs, tv, ts))
+
+    OutlinedTextField(
+        value = ck, onValueChange = { ck = it; save() },
+        label = { Text("Consumer Key") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+    )
+    OutlinedTextField(
+        value = cs, onValueChange = { cs = it; save() },
+        label = { Text("Consumer Secret") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+    )
+    OutlinedTextField(
+        value = tv, onValueChange = { tv = it; save() },
+        label = { Text("Token Value") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+    )
+    OutlinedTextField(
+        value = ts, onValueChange = { ts = it; save() },
+        label = { Text("Token Secret") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+    )
 }

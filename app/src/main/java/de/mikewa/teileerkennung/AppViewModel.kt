@@ -26,10 +26,30 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var settingsMessage by mutableStateOf<String?>(null); private set
     var loginRunning by mutableStateOf(false); private set
 
-    fun saveApiKey(key: String) {
+    var testRunning by mutableStateOf(false); private set
+
+    /** Wird bei jeder Eingabe aufgerufen – der Key ist damit sofort gespeichert. */
+    fun updateApiKey(key: String) {
         store.apiKey = key
         apiKey = store.apiKey
-        settingsMessage = "API-Key gespeichert."
+    }
+
+    fun testApiKey() {
+        if (apiKey.isBlank()) {
+            settingsMessage = "Bitte zuerst den API-Key eintragen."
+            return
+        }
+        testRunning = true
+        settingsMessage = null
+        viewModelScope.launch {
+            settingsMessage = try {
+                withContext(Dispatchers.IO) { Api.testKey(apiKey) }
+            } catch (e: Exception) {
+                friendly(e)
+            } finally {
+                testRunning = false
+            }
+        }
     }
 
     fun login(user: String, password: String) {
@@ -147,7 +167,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val info = withContext(Dispatchers.IO) { Api.resolvePart(c.id, apiKey) }
                 if (info == null) {
-                    partError = "Teil ${c.id} wurde in der Rebrickable-Datenbank nicht gefunden."
+                    partError = "Teil ${c.id} wurde in der Rebrickable-Datenbank nicht gefunden. " +
+                        "Probier einen anderen Treffer aus der Liste."
                     return@launch
                 }
                 part = info
@@ -317,6 +338,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         is UnknownHostException -> "Keine Internetverbindung."
         is ApiException -> e.message ?: "Netzwerkfehler."
         is java.net.SocketTimeoutException -> "Zeitüberschreitung. Bitte erneut versuchen."
-        else -> e.message ?: "Unbekannter Fehler."
+        else -> "Fehler (${e.javaClass.simpleName}): ${e.message ?: "ohne Beschreibung"}"
     }
 }

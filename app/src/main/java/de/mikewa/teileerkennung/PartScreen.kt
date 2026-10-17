@@ -158,6 +158,16 @@ fun PartScreen(vm: AppViewModel) {
             }
         }
 
+        if (!vm.partLoading && !vm.setsLoading && vm.partError == null && vm.part != null && vm.sets.isEmpty()) {
+            item {
+                Text(
+                    "Keine Sets mit diesem Teil in dieser Farbe gefunden. Wähle oben eine andere Farbe oder \"Alle Farben\".",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(16.dp),
+                )
+            }
+        }
+
         if (vm.sets.isNotEmpty()) {
             item {
                 Text(

@@ -17,14 +17,28 @@ class ApiException(message: String, val code: Int = 0) : IOException(message)
 /** Alle Aufrufe sind blockierend und gehören in Dispatchers.IO. */
 object Api {
 
+    private const val USER_AGENT = "TeileErkennung/1.1 (Android; private use)"
+
     private val client = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
         .writeTimeout(60, TimeUnit.SECONDS)
+        .addInterceptor { chain ->
+            chain.proceed(chain.request().newBuilder().header("User-Agent", USER_AGENT).build())
+        }
         .build()
 
     private const val BRICKOGNIZE = "https://api.brickognize.com/predict/parts/"
     private const val REBRICKABLE = "https://rebrickable.com/api/v3"
+
+    /** org.json liefert für JSON-null den Text "null" – das hier gibt dann null zurück. */
+    private fun JSONObject.str(name: String): String? {
+        if (isNull(name)) return null
+        return optString(name).trim().takeIf { it.isNotEmpty() && it != "null" }
+    }
+
+    private fun snippet(body: String): String =
+        body.replace(Regex("<[^>]*>"), " ").replace(Regex("\\s+"), " ").trim().take(160)
 
     // ---------------------------------------------------------------- Erkennung
 
@@ -45,9 +59,9 @@ object Api {
             return (0 until items.length()).map { i ->
                 val o = items.getJSONObject(i)
                 PartCandidate(
-                    id = o.optString("id"),
-                    name = o.optString("name"),
-                    imgUrl = o.optString("img_url").ifBlank { null },
+                    id = o.str("id").orEmpty(),
+                    name = o.str("name").orEmpty(),
+                    imgUrl = o.str("img_url"),
                     score = o.optDouble("score", 0.0),
                 )
             }.filter { it.id.isNotBlank() }
@@ -61,21 +75,26 @@ object Api {
         while (true) {
             val request = Request.Builder()
                 .url(url)
-                .header("Authorization", "key $apiKey")
+                .header("Authorization", "key ${apiKey.trim()}")
                 .header("Accept", "application/json")
                 .build()
             client.newCall(request).execute().use { resp ->
                 val text = resp.body?.string().orEmpty()
                 when {
-                    resp.isSuccessful -> return JSONObject(text)
-                    resp.code == 429 && attempt < 4 -> {
+                    resp.isSuccessful -> try {
+                        return JSONObject(text)
+                    } catch (e: Exception) {
+                        throw ApiException("Rebrickable hat keine gültige Antwort geschickt: ${snippet(text)}")
+                    }
+                    resp.code == 429 && attempt < 5 -> {
                         val wait = resp.header("Retry-After")?.toLongOrNull() ?: 2L
-                        Thread.sleep((wait.coerceIn(1, 10)) * 1000)
+                        Thread.sleep(wait.coerceIn(1, 10) * 1000)
                         attempt++
                     }
-                    resp.code == 401 || resp.code == 403 ->
-                        throw ApiException("Rebrickable lehnt den API-Key ab (HTTP ${resp.code}). Bitte in den Einstellungen prüfen.", resp.code)
-                    else -> throw ApiException("Rebrickable-Fehler (HTTP ${resp.code})", resp.code)
+                    resp.code == 401 ->
+                        throw ApiException("Rebrickable lehnt den API-Key ab (HTTP 401). Bitte den Key in den Einstellungen prüfen.", 401)
+                    resp.code == 404 -> throw ApiException("Nicht gefunden (HTTP 404)", 404)
+                    else -> throw ApiException("Rebrickable-Fehler HTTP ${resp.code}: ${snippet(text)}", resp.code)
                 }
             }
         }
@@ -83,38 +102,75 @@ object Api {
 
     private fun parsePart(o: JSONObject) = PartInfo(
         partNum = o.getString("part_num"),
-        name = o.optString("name"),
-        imgUrl = o.optString("part_img_url").ifBlank { null },
-        url = o.optString("part_url").ifBlank { null },
+        name = o.str("name").orEmpty(),
+        imgUrl = o.str("part_img_url"),
+        url = o.str("part_url"),
     )
 
     private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
 
-    /** Wandelt die erkannte Nummer (BrickLink) in ein Rebrickable-Teil um. */
+    private fun firstPart(json: JSONObject): PartInfo? {
+        val results = json.optJSONArray("results") ?: return null
+        return if (results.length() > 0) parsePart(results.getJSONObject(0)) else null
+    }
+
+    /** Ein billiger Aufruf, um API-Key und Verbindung zu prüfen. */
+    fun testKey(apiKey: String): String {
+        val json = rebrickableGet("$REBRICKABLE/lego/colors/?page_size=1", apiKey)
+        return "Verbindung zu Rebrickable OK (${json.optInt("count")} Farben in der Datenbank)."
+    }
+
+    /**
+     * Wandelt die erkannte Nummer in ein Rebrickable-Teil um.
+     * Reihenfolge: direkte Teilenummer, BrickLink-Nummer, Nummer ohne Buchstaben-Endung, Textsuche.
+     */
     fun resolvePart(candidateId: String, apiKey: String): PartInfo? {
-        val byBricklink = rebrickableGet("$REBRICKABLE/lego/parts/?bricklink_id=${enc(candidateId)}", apiKey)
-        val results = byBricklink.optJSONArray("results")
-        if (results != null && results.length() > 0) return parsePart(results.getJSONObject(0))
-        return try {
-            parsePart(rebrickableGet("$REBRICKABLE/lego/parts/${enc(candidateId)}/", apiKey))
+        val id = candidateId.trim()
+
+        fun direct(num: String): PartInfo? = try {
+            parsePart(rebrickableGet("$REBRICKABLE/lego/parts/${enc(num)}/", apiKey))
         } catch (e: ApiException) {
             if (e.code == 404) null else throw e
         }
+
+        direct(id)?.let { return it }
+        firstPart(rebrickableGet("$REBRICKABLE/lego/parts/?bricklink_id=${enc(id)}", apiKey))?.let { return it }
+
+        // z. B. "3001a" -> "3001"
+        val base = Regex("^(\\d+)[a-z]$").find(id)?.groupValues?.get(1)
+        if (base != null) direct(base)?.let { return it }
+
+        return firstPart(rebrickableGet("$REBRICKABLE/lego/parts/?search=${enc(id)}&page_size=5", apiKey))
     }
 
     fun partColors(partNum: String, apiKey: String): List<PartColor> {
-        val json = rebrickableGet("$REBRICKABLE/lego/parts/${enc(partNum)}/colors/?page_size=1000", apiKey)
-        val arr = json.optJSONArray("results") ?: JSONArray()
-        return (0 until arr.length()).map { i ->
-            val o = arr.getJSONObject(i)
-            PartColor(
-                colorId = o.getInt("color_id"),
-                colorName = o.optString("color_name"),
-                numSets = o.optInt("num_sets"),
-                imgUrl = o.optString("part_img_url").ifBlank { null },
-            )
-        }.sortedByDescending { it.numSets }
+        val out = ArrayList<PartColor>()
+        var url: String? = "$REBRICKABLE/lego/parts/${enc(partNum)}/colors/?page_size=1000"
+        while (url != null) {
+            val json = rebrickableGet(url, apiKey)
+            val arr = json.optJSONArray("results") ?: JSONArray()
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                out += PartColor(
+                    colorId = o.getInt("color_id"),
+                    colorName = o.str("color_name").orEmpty(),
+                    numSets = o.optInt("num_sets"),
+                    imgUrl = o.str("part_img_url"),
+                )
+            }
+            url = json.str("next")
+        }
+        return out.sortedByDescending { it.numSets }
     }
+
+    private fun parseSet(s: JSONObject) = LegoSet(
+        setNum = s.getString("set_num"),
+        name = s.str("name").orEmpty(),
+        year = s.optInt("year"),
+        numParts = s.optInt("num_parts"),
+        imgUrl = s.str("set_img_url"),
+        url = s.str("set_url"),
+    )
 
     fun setsForPartColor(partNum: String, colorId: Int, apiKey: String): List<LegoSet> {
         val out = ArrayList<LegoSet>()
@@ -122,18 +178,8 @@ object Api {
         while (url != null) {
             val json = rebrickableGet(url, apiKey)
             val arr = json.optJSONArray("results") ?: JSONArray()
-            for (i in 0 until arr.length()) {
-                val o = arr.getJSONObject(i)
-                out += LegoSet(
-                    setNum = o.getString("set_num"),
-                    name = o.optString("name"),
-                    year = o.optInt("year"),
-                    numParts = o.optInt("num_parts"),
-                    imgUrl = o.optString("set_img_url").ifBlank { null },
-                    url = o.optString("set_url").ifBlank { null },
-                )
-            }
-            url = json.optString("next").takeIf { it.isNotBlank() && it != "null" }
+            for (i in 0 until arr.length()) out += parseSet(arr.getJSONObject(i))
+            url = json.str("next")
         }
         return out
     }
@@ -145,13 +191,13 @@ object Api {
         val form = FormBody.Builder().add("username", username).add("password", password).build()
         val request = Request.Builder()
             .url("$REBRICKABLE/users/_token/")
-            .header("Authorization", "key $apiKey")
+            .header("Authorization", "key ${apiKey.trim()}")
             .post(form)
             .build()
         client.newCall(request).execute().use { resp ->
             val text = resp.body?.string().orEmpty()
             if (!resp.isSuccessful) {
-                throw ApiException("Anmeldung fehlgeschlagen (HTTP ${resp.code}). Benutzername, Passwort und API-Key prüfen.", resp.code)
+                throw ApiException("Anmeldung fehlgeschlagen (HTTP ${resp.code}): ${snippet(text)}", resp.code)
             }
             return JSONObject(text).getString("user_token")
         }
@@ -163,18 +209,8 @@ object Api {
         while (url != null) {
             val json = rebrickableGet(url, apiKey)
             val arr = json.optJSONArray("results") ?: JSONArray()
-            for (i in 0 until arr.length()) {
-                val s = arr.getJSONObject(i).getJSONObject("set")
-                out += LegoSet(
-                    setNum = s.getString("set_num"),
-                    name = s.optString("name"),
-                    year = s.optInt("year"),
-                    numParts = s.optInt("num_parts"),
-                    imgUrl = s.optString("set_img_url").ifBlank { null },
-                    url = s.optString("set_url").ifBlank { null },
-                )
-            }
-            url = json.optString("next").takeIf { it.isNotBlank() && it != "null" }
+            for (i in 0 until arr.length()) out += parseSet(arr.getJSONObject(i).getJSONObject("set"))
+            url = json.str("next")
         }
         return out
     }
@@ -183,7 +219,7 @@ object Api {
         val form = FormBody.Builder().add("set_num", setNum).add("quantity", "1").build()
         val request = Request.Builder()
             .url("$REBRICKABLE/users/${enc(userToken)}/sets/")
-            .header("Authorization", "key $apiKey")
+            .header("Authorization", "key ${apiKey.trim()}")
             .post(form)
             .build()
         client.newCall(request).execute().use { resp ->
@@ -197,7 +233,7 @@ object Api {
     fun deleteRemoteSet(setNum: String, userToken: String, apiKey: String) {
         val request = Request.Builder()
             .url("$REBRICKABLE/users/${enc(userToken)}/sets/${enc(setNum)}/")
-            .header("Authorization", "key $apiKey")
+            .header("Authorization", "key ${apiKey.trim()}")
             .delete()
             .build()
         client.newCall(request).execute().use { resp ->

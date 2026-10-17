@@ -11,13 +11,27 @@ android {
         applicationId = "de.mikewa.teileerkennung"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
+    }
+
+    // Fester Schlüssel (nur private Nutzung), damit neue Versionen sich über alte installieren lassen.
+    signingConfigs {
+        create("fixed") {
+            storeFile = file("teile-erkennung.keystore")
+            storePassword = "teileerkennung"
+            keyAlias = "teile"
+            keyPassword = "teileerkennung"
+        }
     }
 
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("fixed")
+        }
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("fixed")
         }
     }
 

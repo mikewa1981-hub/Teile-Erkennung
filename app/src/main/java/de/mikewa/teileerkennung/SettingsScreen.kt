@@ -46,13 +46,20 @@ fun SettingsScreen(vm: AppViewModel) {
         )
         OutlinedTextField(
             value = apiKey,
-            onValueChange = { apiKey = it },
-            label = { Text("API-Key") },
+            onValueChange = {
+                apiKey = it
+                vm.updateApiKey(it)
+            },
+            label = { Text("API-Key (wird automatisch gespeichert)") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
-        Button(onClick = { vm.saveApiKey(apiKey) }, modifier = Modifier.fillMaxWidth()) {
-            Text("API-Key speichern")
+        Button(
+            onClick = { vm.testApiKey() },
+            enabled = !vm.testRunning,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(if (vm.testRunning) "Teste …" else "Verbindung testen")
         }
         OutlinedButton(
             onClick = { uriHandler.openUri("https://rebrickable.com/api/") },

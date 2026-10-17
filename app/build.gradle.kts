@@ -11,8 +11,8 @@ android {
         applicationId = "de.mikewa.teileerkennung"
         minSdk = 26
         targetSdk = 34
-        versionCode = 4
-        versionName = "1.3"
+        versionCode = 5
+        versionName = "1.4"
     }
 
     // Fester Schlüssel (nur private Nutzung), damit neue Versionen sich über alte installieren lassen.

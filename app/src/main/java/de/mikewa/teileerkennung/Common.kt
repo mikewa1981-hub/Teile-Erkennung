@@ -103,6 +103,31 @@ fun SetRow(set: LegoSet, onClick: () -> Unit, trailing: @Composable () -> Unit) 
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (set.partQty > 0 && set.qtyDetail != null && set.qtyDetail.contains(",")) {
+                Text(
+                    set.qtyDetail,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        if (set.partQty > 0) {
+            Box(
+                Modifier
+                    .padding(start = 8.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.primaryContainer)
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    "${set.partQty}×",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+            }
         }
         trailing()
     }
@@ -124,6 +149,13 @@ fun SetDialog(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 ImageBox(set.imgUrl, Modifier.fillMaxWidth().aspectRatio(1.3f))
                 Text("Set ${set.details()}")
+                if (set.partQty > 0) {
+                    Text(
+                        "Gescanntes Teil: ${set.partQty}× in diesem Set" +
+                            (set.qtyDetail?.let { " ($it)" } ?: ""),
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                }
                 set.url?.let { url ->
                     OutlinedButton(onClick = { uriHandler.openUri(url) }, modifier = Modifier.fillMaxWidth()) {
                         Text(if (url.contains("bricklink")) "Auf BrickLink ansehen" else "Auf Rebrickable ansehen")

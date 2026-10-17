@@ -141,21 +141,27 @@ object BrickLink {
             val group = arr.getJSONObject(i)
             val colorId = group.optInt("color_id")
             val entries = group.optJSONArray("entries") ?: JSONArray()
-            val sets = ArrayList<LegoSet>()
+            // Ein Set kann mehrfach auftauchen (regulär, als Ersatzteil, …) – Mengen zusammenzählen.
+            val bySet = LinkedHashMap<String, LegoSet>()
             for (j in 0 until entries.length()) {
-                val item = entries.getJSONObject(j).optJSONObject("item") ?: continue
+                val entry = entries.getJSONObject(j)
+                val item = entry.optJSONObject("item") ?: continue
                 if (item.optString("type") != "SET") continue
                 val no = item.optString("no")
                 if (no.isBlank()) continue
-                sets += LegoSet(
+                val qty = entry.optInt("quantity", 0)
+                val existing = bySet[no]
+                bySet[no] = existing?.copy(partQty = existing.partQty + qty) ?: LegoSet(
                     setNum = no,
                     name = android.text.Html.fromHtml(item.optString("name"), 0).toString(),
                     year = 0,
                     numParts = 0,
                     imgUrl = setImage(no),
                     url = setUrl(no),
+                    partQty = qty,
                 )
             }
+            val sets = bySet.values.toList()
             if (sets.isEmpty()) continue
             val color = PartColor(
                 colorId = colorId,

@@ -30,6 +30,10 @@ data class LegoSet(
     val numParts: Int,
     val imgUrl: String?,
     val url: String?,
+    /** Wie oft das gescannte Teil in diesem Set vorkommt (0 = unbekannt). */
+    val partQty: Int = 0,
+    /** Aufteilung nach Farben, z. B. "3 Rot, 2 Blau" – nur bei "Alle Farben". */
+    val qtyDetail: String? = null,
 )
 
 /**

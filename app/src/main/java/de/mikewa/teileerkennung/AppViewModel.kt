@@ -184,6 +184,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Bei BrickLink kommen alle Farben mit einem Aufruf – hier zwischengespeichert. */
     private var blSets: Map<Int, List<LegoSet>>? = null
+    private var blColorNames: Map<Int, String> = emptyMap()
 
     val partOpen: Boolean get() = selectedCandidate != null
 
@@ -263,6 +264,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         setsSource = "BrickLink"
         colors = byColor.keys.toList()
         blSets = byColor.entries.associate { it.key.colorId to it.value }
+        blColorNames = byColor.keys.associate { it.colorId to it.colorName }
         if (byColor.isEmpty()) {
             partError = "Für dieses Teil sind bei BrickLink keine Sets bekannt."
         } else {
@@ -299,9 +301,23 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             setsLoading = false
             setsProgress = null
             sets = if (colorId == null) {
-                cache.values.flatten().distinctBy { it.setNum }.sortedBy { it.setNum }
+                // Mengen aller Farben pro Set zusammenzählen
+                val merged = LinkedHashMap<String, LegoSet>()
+                val perColor = HashMap<String, MutableList<String>>()
+                cache.forEach { (cid, list) ->
+                    val colorName = blColorNames[cid] ?: "Farbe $cid"
+                    list.forEach { s ->
+                        val prev = merged[s.setNum]
+                        merged[s.setNum] = prev?.copy(partQty = prev.partQty + s.partQty) ?: s
+                        perColor.getOrPut(s.setNum) { mutableListOf() } += "${s.partQty} $colorName"
+                    }
+                }
+                merged.values.map { s ->
+                    val parts = perColor[s.setNum].orEmpty()
+                    s.copy(qtyDetail = if (parts.size > 1) parts.joinToString(", ") else parts.firstOrNull())
+                }.sortedWith(compareByDescending<LegoSet> { it.partQty }.thenBy { it.setNum })
             } else {
-                cache[colorId].orEmpty().sortedBy { it.setNum }
+                cache[colorId].orEmpty().sortedWith(compareByDescending<LegoSet> { it.partQty }.thenBy { it.setNum })
             }
             return
         }

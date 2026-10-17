@@ -223,7 +223,8 @@ fun PartScreen(vm: AppViewModel) {
         if (vm.sets.isNotEmpty()) {
             item {
                 Text(
-                    "${vm.sets.size} Sets mit diesem Teil" + (vm.setsSource?.let { " (Quelle: $it)" } ?: ""),
+                    "${vm.sets.size} Sets mit diesem Teil" + (vm.setsSource?.let { " (Quelle: $it)" } ?: "") +
+                        if (vm.sets.any { it.partQty > 0 }) " – Zahl rechts = Anzahl im Set" else "",
                     style = MaterialTheme.typography.titleSmall,
                     modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
                 )

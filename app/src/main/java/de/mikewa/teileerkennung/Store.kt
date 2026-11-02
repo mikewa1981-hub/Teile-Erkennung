@@ -35,6 +35,14 @@ class Store(context: Context) {
         get() = prefs.getString("user_token", "").orEmpty()
         set(v) = prefs.edit().putString("user_token", v).apply()
 
+    fun loadSeries(): List<CmfSeries> = SeriesJson.read(prefs.getString("cmf_series", null))
+    fun saveSeries(list: List<CmfSeries>) = prefs.edit().putString("cmf_series", SeriesJson.write(list)).apply()
+
+    /** Setnummern, die schon geprüft wurden und keine Sammelfigur sind. */
+    var notCmf: Set<String>
+        get() = prefs.getStringSet("not_cmf", emptySet()).orEmpty()
+        set(v) = prefs.edit().putStringSet("not_cmf", v).apply()
+
     fun loadCollection(): List<CollectionEntry> {
         val raw = prefs.getString("collection", null) ?: return emptyList()
         return try {

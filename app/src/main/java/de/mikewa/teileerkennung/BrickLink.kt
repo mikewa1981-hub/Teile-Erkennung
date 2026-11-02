@@ -116,6 +116,66 @@ object BrickLink {
         if (e.code == 404) null else throw e
     }
 
+    // ---------------------------------------------------------------- Sammelserien
+
+    /** Kategorie-IDs der Sammelfiguren (Hauptkategorie + Unterkategorien) mit Namen, z. B. "Series 25". */
+    private var cmfCats: Map<Int, String>? = null
+
+    fun cmfCategories(c: BrickLinkCredentials): Map<Int, String> {
+        cmfCats?.let { return it }
+        val arr = get("/categories", emptyMap(), c) as JSONArray
+        val all = (0 until arr.length()).map { arr.getJSONObject(it) }
+        val roots = all.filter {
+            val n = it.optString("category_name")
+            n.contains("Collectible Minifig", true) || n.contains("Collectable Minifig", true)
+        }.map { it.getInt("category_id") }.toMutableSet()
+        // alle Unterkategorien einsammeln
+        var grew = true
+        while (grew) {
+            grew = false
+            all.forEach {
+                val id = it.getInt("category_id")
+                if (id !in roots && it.optInt("parent_id") in roots) {
+                    roots += id
+                    grew = true
+                }
+            }
+        }
+        val map = all.filter { it.getInt("category_id") in roots }
+            .associate { it.getInt("category_id") to android.text.Html.fromHtml(it.optString("category_name"), 0).toString() }
+        cmfCats = map
+        return map
+    }
+
+    /** Set-Stammdaten; null, wenn es die Nummer nicht gibt. */
+    fun setItem(no: String, c: BrickLinkCredentials): Pair<String, Int>? = try {
+        val o = get("/items/SET/${pct(no)}", emptyMap(), c) as JSONObject
+        android.text.Html.fromHtml(o.optString("name"), 0).toString() to o.optInt("category_id")
+    } catch (e: ApiException) {
+        if (e.code == 404 || e.code == 400) null else throw e
+    }
+
+    /** Die eine Minifigur in einem Sammelfiguren-Set: Nummer, Name, Bild. */
+    fun singleMinifig(setNo: String, c: BrickLinkCredentials): Triple<String, String, String>? {
+        val arr = get("/items/SET/${pct(setNo)}/subsets", emptyMap(), c) as JSONArray
+        val figs = ArrayList<Triple<String, String, String>>()
+        for (i in 0 until arr.length()) {
+            val entries = arr.getJSONObject(i).optJSONArray("entries") ?: continue
+            for (j in 0 until entries.length()) {
+                val item = entries.getJSONObject(j).optJSONObject("item") ?: continue
+                if (item.optString("type") != "MINIFIG") continue
+                val no = item.optString("no")
+                figs += Triple(
+                    no,
+                    android.text.Html.fromHtml(item.optString("name"), 0).toString(),
+                    "https://img.bricklink.com/ItemImage/MN/0/$no.png",
+                )
+            }
+        }
+        // Komplettsets (alle Figuren einer Serie in einem Set) gehören nicht ins Raster
+        return figs.distinctBy { it.first }.singleOrNull()
+    }
+
     private var colorNames: Map<Int, String>? = null
 
     private fun colorNames(c: BrickLinkCredentials): Map<Int, String> {

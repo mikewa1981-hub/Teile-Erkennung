@@ -446,6 +446,141 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private class SyncResult(val list: List<CollectionEntry>, val uploaded: Int, val downloaded: Int, val removed: Int)
 
+    // ------------------------------------------------------------ Sammelserien
+    var series by mutableStateOf(store.loadSeries()); private set
+    var seriesLoading by mutableStateOf(false); private set
+    var seriesProgress by mutableStateOf<String?>(null); private set
+    var seriesMessage by mutableStateOf<String?>(null); private set
+    var openSeriesBase by mutableStateOf<String?>(null); private set
+
+    val openSeries: CmfSeries? get() = series.firstOrNull { it.base == openSeriesBase }
+
+    fun ownedCount(s: CmfSeries) = s.figures.count { isInCollection(it.setNum) }
+
+    fun showSeries(base: String?) {
+        openSeriesBase = base
+    }
+
+    /** Figur antippen: in die Sammlung aufnehmen oder wieder entfernen. */
+    fun toggleFigure(f: CmfFigure) {
+        if (isInCollection(f.setNum)) {
+            removeSet(f.setNum)
+        } else {
+            addSet(
+                LegoSet(
+                    setNum = f.setNum,
+                    name = f.name,
+                    year = 0,
+                    numParts = 0,
+                    imgUrl = f.imgUrl,
+                    url = BrickLink.setUrl(f.setNum),
+                ),
+            )
+        }
+    }
+
+    fun removeSeries(base: String) {
+        series = series.filterNot { it.base == base }
+        store.saveSeries(series)
+        if (openSeriesBase == base) openSeriesBase = null
+    }
+
+    /**
+     * Sucht Sammelfiguren in der Sammlung und lädt die vollständige Serie dazu von BrickLink.
+     * [manualBase] (z. B. "71045") nimmt eine Serie auch ohne eigene Figur auf.
+     */
+    fun refreshSeries(manualBase: String? = null) {
+        val bl = brickLink
+        if (!bl.complete) {
+            seriesMessage = "Für die Serien-Übersicht bitte in den Einstellungen die BrickLink-Schlüssel eintragen."
+            return
+        }
+        if (seriesLoading) return
+        seriesLoading = true
+        seriesMessage = null
+        seriesProgress = "Kategorien werden geladen …"
+        viewModelScope.launch {
+            try {
+                val known = series.associateBy { it.base }.toMutableMap()
+                var added = 0
+                val notCmf = store.notCmf.toMutableSet()
+                withContext(Dispatchers.IO) {
+                    val cats = BrickLink.cmfCategories(bl)
+
+                    // Kandidaten: Grundnummern aus der Sammlung, die noch nicht als Serie bekannt sind
+                    val bases = LinkedHashMap<String, String>() // base -> ein Set daraus
+                    visibleCollection.map { it.set }
+                        .filter { looksLikeCmf(it) && it.setNum !in notCmf && baseNumber(it.setNum) !in known }
+                        .forEach { bases.putIfAbsent(baseNumber(it.setNum), it.setNum) }
+                    manualBase?.trim()?.takeIf { it.isNotEmpty() && it !in known }?.let {
+                        bases.putIfAbsent(baseNumber(it), "${baseNumber(it)}-1")
+                    }
+
+                    bases.entries.forEachIndexed { i, (base, probe) ->
+                        seriesProgress = "Prüfe ${i + 1} von ${bases.size}: $base"
+                        val item = BrickLink.setItem(probe, bl)
+                        if (item == null || item.second !in cats) {
+                            notCmf += probe
+                            return@forEachIndexed
+                        }
+                        val s = loadSeriesFigures(base, cats, bl)
+                        if (s != null) {
+                            known[base] = s
+                            added++
+                        } else {
+                            notCmf += probe
+                        }
+                    }
+                }
+                store.notCmf = notCmf
+                series = known.values.sortedByDescending { it.base.toIntOrNull() ?: 0 }
+                store.saveSeries(series)
+                seriesMessage = when {
+                    manualBase != null && added == 0 && manualBase.trim() !in known ->
+                        "Zu ${manualBase.trim()} wurde keine Sammelserie gefunden."
+                    added > 0 -> "$added Serie(n) neu geladen."
+                    series.isEmpty() -> "In deiner Sammlung sind noch keine Sammelfiguren."
+                    else -> "Alles aktuell."
+                }
+            } catch (e: Exception) {
+                seriesMessage = friendly(e)
+            } finally {
+                seriesLoading = false
+                seriesProgress = null
+            }
+        }
+    }
+
+    /** Lädt alle Einzelfiguren 1, 2, 3 … einer Serie, bis BrickLink keine weitere Nummer mehr kennt. */
+    private fun loadSeriesFigures(base: String, cats: Map<Int, String>, bl: BrickLinkCredentials): CmfSeries? {
+        val figures = ArrayList<CmfFigure>()
+        var title: String? = null
+        var misses = 0
+        var k = 1
+        while (k <= 40 && misses < 2) {
+            val setNum = "$base-$k"
+            seriesProgress = "Serie $base: Figur $k"
+            val item = BrickLink.setItem(setNum, bl)
+            if (item == null) {
+                misses++
+            } else {
+                misses = 0
+                if (item.second in cats) {
+                    BrickLink.singleMinifig(setNum, bl)?.let { (_, figName, img) ->
+                        figures += CmfFigure(setNum, k, figName, img)
+                        if (title == null) title = cats[item.second]
+                    }
+                }
+            }
+            k++
+        }
+        if (figures.isEmpty()) return null
+        val t = title?.takeUnless {
+            it.contains("Collectible Minifig", true) || it.contains("Collectable Minifig", true)
+        } ?: "Serie $base"
+        return CmfSeries(base, t, figures)
+    }
+
     // ------------------------------------------------------------ Hilfen
     private fun friendly(e: Exception): String = when (e) {
         is UnknownHostException -> "Keine Internetverbindung."

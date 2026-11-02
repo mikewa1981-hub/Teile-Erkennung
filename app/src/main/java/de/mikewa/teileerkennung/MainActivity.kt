@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
@@ -28,6 +29,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 enum class Tab(val label: String, val icon: ImageVector) {
     Scan("Scannen", Icons.Filled.CameraAlt),
     Collection("Sammlung", Icons.Filled.Inventory2),
+    Series("Serien", Icons.Filled.Groups),
     Settings("Einstellungen", Icons.Filled.Settings),
 }
 
@@ -67,6 +69,7 @@ fun Root(vm: AppViewModel) {
             when (tab) {
                 Tab.Scan -> if (vm.partOpen) PartScreen(vm) else ScanScreen(vm)
                 Tab.Collection -> CollectionScreen(vm)
+                Tab.Series -> SeriesScreen(vm)
                 Tab.Settings -> SettingsScreen(vm)
             }
         }
